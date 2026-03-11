@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-TYPE 診断テスト</title>
+    <style>
+        :root {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0; --accent-color: #4a90e2; --danger-color: #cf6679;
+            --border-color: #333; --option-bg: #2c2c2c;
+        }
+        body { font-family: sans-serif; background-color: var(--bg-color); color: var(--text-primary); margin: 0; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; margin-bottom: 30px; }
+        .progress-container { background: #333; height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
+        .progress-bar { height: 100%; background: var(--accent-color); width: 0%; transition: width 0.3s ease; }
+        .view { display: none; }
+        .view.active { display: block; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .card { background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); margin-bottom: 20px; }
+        .q-item { margin-bottom: 35px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+        .q-text { font-size: 1.1rem; margin-bottom: 15px; font-weight: bold; }
+        .options-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+        .option-btn input { display: none; }
+        .option-label { display: block; background: var(--option-bg); padding: 12px 5px; text-align: center; border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: 0.2s; font-size: 0.85rem;}
+        .option-btn input:checked + .option-label { background: var(--accent-color); color: white; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 30px; padding-bottom: 50px;}
+        .btn { padding: 12px 30px; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: bold; }
+        .btn-primary { background: var(--accent-color); color: white; }
+        .btn-secondary { background: #444; color: white; }
+        .score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 20px 0; }
+        .score-item { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; font-size: 0.85rem; }
+        .summary-box { background: rgba(74, 144, 226, 0.1); padding: 20px; border-radius: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>X-TYPE 診断テスト</h1>
+            <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
+            <span id="progressText">0% 回答済み</span>
+        </header>
+
+        <main id="app">
+            <section id="intro" class="view active">
+                <div class="card" style="text-align:center;">
+                    <h2>診断を開始します</h2>
+                    <p>全100問の質問に答えて、あなたの真のタイプを導き出します。</p>
+                    <button class="btn btn-primary" onclick="app.start()">診断を始める</button>
+                </div>
+            </section>
+
+            <section id="question-view" class="view">
+                <div class="card">
+                    <h2 id="section-title"></h2>
+                    <p id="section-desc" style="color:var(--text-secondary)"></p>
+                </div>
+                <div id="questions-container"></div>
+                <div class="navigation">
+                    <button id="prevBtn" class="btn btn-secondary" onclick="app.prev()">戻る</button>
+                    <button id="nextBtn" class="btn btn-primary" onclick="app.next()">次へ</button>
+                </div>
+            </section>
+
+            <section id="result-view" class="view">
+                <div class="card" style="text-align:center;">
+                    <h3>診断結果</h3>
+                    <div id="res-full-code" style="font-size:2rem; font-weight:bold; color:var(--accent-color); letter-spacing:2px;"></div>
+                    <h1 id="res-name" style="margin:10px 0;"></h1>
+                    <div id="score-display" class="score-grid"></div>
+                    <div class="summary-box">
+                        <p id="res-summary-1"></p>
+                        <p id="res-summary-2"></p>
+                    </div>
+                    <button class="btn btn-primary" onclick="location.reload()" style="margin-top:30px">最初からやり直す</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const APP_DATA = {
+            sections: [
+                { id: 1, title: "セクション1: 対人性", desc: "対人関係のスタイルについて", range: [1,15] },
+                { id: 2, title: "セクション2: 遂行性", desc: "物事への取り組み方について", range: [16,35] },
+                { id: 3, title: "セクション3: 集団性", desc: "集団と個人の関わり方について", range: [36,55] },
+                { id: 4, title: "セクション4: 習得性", desc: "理解と実践のプロセスについて", range: [56,75] },
+                { id: 5, title: "セクション5: 指向性", desc: "エネルギーの方向性について", range: [76,100] }
+            ],
+            questions: [
+                { id: 1, text: "一対一で深く向き合う時間に満足を感じる。", type: "A" },
+                { id: 2, text: "どんな場でもすぐ輪に入りフラットに話せる。", type: "F" },
+                { id: 3, text: "感情に流されず公平な距離感を保つ方だ。", type: "N" },
+                { id: 4, text: "相手の心情を汲み取り寄り添うことを優先する。", type: "A" },
+                { id: 5, text: "ラフな冗談と軽いノリで関係を温めるのが得意だ。", type: "F" },
+                { id: 6, text: "誰に対しても同じ原則で接するよう努める。", type: "N" },
+                { id: 7, text: "大切な人とは密度の高い関係を築きたい。", type: "A" },
+                { id: 8, text: "初対面でも広く友達になれる自信がある。", type: "F" },
+                { id: 9, text: "相手との距離を適切に取り直せる。", type: "N" },
+                { id: 10, text: "親密な約束や節目を大事にする。", type: "A" },
+                { id: 11, text: "集まりの雰囲気を軽く明るくする役回りが多い。", type: "F" },
+                { id: 12, text: "状況のバランスを見て個人感情を抑えられる。", type: "N" },
+                { id: 13, text: "一人を丁寧に支える方が性に合う。", type: "A" },
+                { id: 14, text: "気軽な関係を多めに持っていたい。", type: "F" },
+                { id: 15, text: "原則に反しても情だけでは動かない。", type: "N" },
+                { id: 16, text: "何をするにも、その場の状況に合わせてやり方を変える方だ。", type: "D" },
+                { id: 17, text: "一つのことを始めると、時間を忘れて没頭してしまう。", type: "S" },
+                { id: 18, text: "複数の作業を並行してそつなく回せる。", type: "D" },
+                { id: 19, text: "興味を持ったことは、とことん突き詰めないと気が済まない。", type: "S" },
+                { id: 20, text: "新しい環境や人に慣れるのは早い方だ。", type: "D" },
+                { id: 21, text: "一度好きになったことは、飽きても完全には離れられない。", type: "S" },
+                { id: 22, text: "その場の空気を読んで動くのが得意だ。", type: "D" },
+                { id: 23, text: "物事を深く考え込みすぎて、時間を忘れることがある。", type: "S" },
+                { id: 24, text: "状況に応じて行動を切り替えるのが自然にできる。", type: "D" },
+                { id: 25, text: "自分の世界に入り込み、他人の声が聞こえなくなることがある。", type: "S" },
+                { id: 26, text: "環境や人間関係が変わっても、すぐに順応できる。", type: "D" },
+                { id: 27, text: "得意な分野では、誰にも負けたくないと思う。", type: "S" },
+                { id: 28, text: "予定が変わっても、特に動揺はしない。", type: "D" },
+                { id: 29, text: "興味のあることに集中している時、周囲のことを完全に忘れる。", type: "S" },
+                { id: 30, text: "求められた役割に合わせて、自分を調整するのが上手い。", type: "D" },
+                { id: 31, text: "ひとつのテーマを何年もかけて磨くことが好きだ。", type: "S" },
+                { id: 32, text: "その場のノリや即興で動くことが多い。", type: "D" },
+                { id: 33, text: "自分のこだわりを貫くことに喜びを感じる。", type: "S" },
+                { id: 34, text: "柔軟さを失うより、深さを失う方が怖い。", type: "S" },
+                { id: 35, text: "変化に対応する方が得意か、集中し続ける方が得意かといえば前者だ。", type: "D" },
+                { id: 36, text: "チームやグループの中にいると安心する。", type: "O" },
+                { id: 37, text: "一人の時間がないと落ち着かない。", type: "I" },
+                { id: 38, text: "誰かと一緒に行動した方がモチベーションが上がる。", type: "O" },
+                { id: 39, text: "自分のペースで動ける環境が最も成果を出せる。", type: "I" },
+                { id: 40, text: "仲間の成功を自分のことのように喜べる。", type: "O" },
+                { id: 41, text: "周囲の期待より、自分の満足を優先したい。", type: "I" },
+                { id: 42, text: "集団で意見をまとめる作業は得意だと思う。", type: "O" },
+                { id: 43, text: "意見が違っても、譲らず自分の考えを貫きたい。", type: "I" },
+                { id: 44, text: "周囲の雰囲気を壊さないように発言を選ぶ。", type: "O" },
+                { id: 45, text: "他人に合わせすぎると、自分を見失う気がする。", type: "I" },
+                { id: 46, text: "チームのためなら、自分の役割を変えることもできる。", type: "O" },
+                { id: 47, text: "成果を他人と分け合うより、自分で完結させたい。", type: "I" },
+                { id: 48, text: "会議や議論の場では、みんなの意見を聞いて調整する。", type: "O" },
+                { id: 49, text: "自分の考えを理解してくれる人だけいれば十分だ。", type: "I" },
+                { id: 50, text: "「みんなでやる」が好きな言葉だ。", type: "O" },
+                { id: 51, text: "他人のペースに合わせるのはストレスになる。", type: "I" },
+                { id: 52, text: "組織やルールに従うのは大切なことだと思う。", type: "O" },
+                { id: 53, text: "結果よりも、自分のやり方でやり遂げた満足感を重視する。", type: "I" },
+                { id: 54, text: "周囲と協力して進める方が安心する。", type: "O" },
+                { id: 55, text: "他人と関わるより、自分の時間を優先したい。", type: "I" },
+                { id: 56, text: "行動してみないと理解できないことが多い。", type: "R" },
+                { id: 57, text: "まず試してみてから考えるタイプだ。", type: "St" },
+                { id: 58, text: "新しいことを始める時、理屈より感覚を信じる。", type: "R" },
+                { id: 59, text: "頭で理解してから動く方が安心する。", type: "St" },
+                { id: 60, text: "経験を通して身につけるのが得意だ。", type: "R" },
+                { id: 61, text: "計画を立ててから行動する方が性に合う。", type: "St" },
+                { id: 62, text: "やってみるうちにコツを掴むタイプだ。", type: "R" },
+                { id: 63, text: "理論や手順を覚えてからでないと不安になる。", type: "St" },
+                { id: 64, text: "体で覚えることの方が長く身につく。", type: "R" },
+                { id: 65, text: "資料や説明書を読むのが好きだ。", type: "St" },
+                { id: 66, text: "実際の現場に立ってこそ本質が見えると思う。", type: "R" },
+                { id: 67, text: "人の話よりも、自分の経験を信じる。", type: "St" },
+                { id: 68, text: "情報を整理して理解するのが得意だ。", type: "R" },
+                { id: 69, text: "感覚的に理解する方が早い。", type: "St" },
+                { id: 70, text: "知識を積み重ねる過程に楽しさを感じる。", type: "R" },
+                { id: 71, text: "直感で判断してもうまくいくことが多い。", type: "St" },
+                { id: 72, text: "理論的な説明がないと納得しづらい。", type: "R" },
+                { id: 73, text: "体験して初めて納得できる。", type: "St" },
+                { id: 74, text: "理解より行動を優先する。", type: "R" },
+                { id: 75, text: "行動より理解を優先する。", type: "St" },
+                { id: 76, text: "思いつきをまず外に出して場を動かす。", type: "A" },
+                { id: 77, text: "他人のためなら段取りを肩代わりできる。", type: "A" },
+                { id: 78, text: "ひとまず自分の基準で静かに判断してから動く。", type: "E" },
+                { id: 79, text: "公に出す前に内側で十分に練る。", type: "E" },
+                { id: 80, text: "人に見せない努力時間を確保してから勝負する。", type: "E" },
+                { id: 81, text: "自分の考えや感情は、比較的すぐ表に出る方だ。", type: "A" },
+                { id: 82, text: "思いつきは内で練り込んでから出したい。", type: "E" },
+                { id: 83, text: "自分より相手の必要に手を伸ばしやすい。", type: "A" },
+                { id: 84, text: "自分の基準に沿って優先順位を決める方だ。", type: "E" },
+                { id: 85, text: "情報や知見は積極的に共有したい。", type: "A" },
+                { id: 86, text: "情報や知見は必要な時に的確に出す方が好きだ。", type: "E" },
+                { id: 87, text: "周囲を巻き込んで加速させるのが得意だ。", type: "A" },
+                { id: 88, text: "一人でも進められる仕組みを作るのが得意だ。", type: "E" },
+                { id: 89, text: "公の場で振る舞うとエネルギーが湧く。", type: "A" },
+                { id: 90, text: "閉じた環境で集中した方が力が出る。", type: "E" },
+                { id: 91, text: "他者の成功を後押しすると満足する。", type: "A" },
+                { id: 92, text: "自分の成長曲線を静かに磨くと満足する。", type: "E" },
+                { id: 93, text: "困っている人に自然と声をかける。", type: "A" },
+                { id: 94, text: "声をかける前に状況と自分の余力を測る。", type: "E" },
+                { id: 95, text: "チームに貢献すると自分も引き上がる。", type: "A" },
+                { id: 96, text: "自分が整えば周囲にも良い影響が出ると思う。", type: "E" },
+                { id: 97, text: "まず場を温めてから本題に入る。", type: "A" },
+                { id: 98, text: "まず核心を固めてから場に出す。", type: "E" },
+                { id: 99, text: "人前での発表や議論を楽しめる。", type: "A" },
+                { id: 100, text: "少人数または非公開の環境を好む。", type: "E" }
+            ],
+            choices: [
+                { label: "はい", value: 2 }, { label: "ややはい", value: 1 }, { label: "どちらも", value: 0.5 },
+                { label: "どちらでもない", value: 0 }, { label: "ややいいえ", value: -1 }, { label: "いいえ", value: -2 }
+            ],
+            nameMap: {
+                "A-DOR": "勇者", "A-DOS": "先導者", "A-DIR": "人情家", "A-DIS": "教師", "A-SOR": "守護者", "A-SOS": "指揮者", "A-SIR": "探検家", "A-SIS": "研究者",
+                "F-DOR": "立会人", "F-DOS": "調律師", "F-DIR": "案内人", "F-DIS": "調停者", "F-SOR": "立役者", "F-SOS": "監督", "F-SIR": "革新家", "F-SIS": "開発者",
+                "N-DOR": "批評家", "N-DOS": "是正者", "N-DIR": "観察家", "N-DIS": "書記官", "N-SOR": "裁判官", "N-SOS": "設計士", "N-SIR": "分析官", "N-SIS": "哲学者"
+            }
+        };
+
+        const app = {
+            currentSection: 0, answers: {},
+            init() { 
+                const saved = localStorage.getItem('xtype_answers');
+                if (saved) { this.answers = JSON.parse(saved); this.updateProgress(); }
+            },
+            start() { this.showView('question-view'); this.renderSection(); },
+            showView(id) { document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); },
+            renderSection() {
+                const sec = APP_DATA.sections[this.currentSection];
+                document.getElementById('section-title').textContent = sec.title;
+                document.getElementById('section-desc').textContent = sec.desc;
+                const container = document.getElementById('questions-container');
+                container.innerHTML = '';
+                const qs = APP_DATA.questions.filter(q => q.id >= sec.range[0] && q.id <= sec.range[1]);
+                qs.forEach(q => {
+                    const item = document.createElement('div'); item.className = 'q-item';
+                    item.innerHTML = `<div class="q-text">${q.id}. ${q.text}</div>`;
+                    const group = document.createElement('div'); group.className = 'options-group';
+                    APP_DATA.choices.forEach(c => {
+                        const checked = this.answers[q.id] === c.value ? 'checked' : '';
+                        group.innerHTML += `<label class="option-btn"><input type="radio" name="q${q.id}" value="${c.value}" ${checked} onchange="app.save(${q.id},${c.value})"><span class="option-label">${c.label}</span></label>`;
+                    });
+                    item.appendChild(group); container.appendChild(item);
+                });
+                document.getElementById('prevBtn').style.visibility = this.currentSection === 0 ? 'hidden' : 'visible';
+                document.getElementById('nextBtn').textContent = this.currentSection === 4 ? '結果を見る' : '次へ';
+            },
+            save(id, v) { this.answers[id] = v; localStorage.setItem('xtype_answers', JSON.stringify(this.answers)); this.updateProgress(); },
+            updateProgress() {
+                const count = Object.keys(this.answers).length;
+                const p = Math.floor((count / 100) * 100);
+                document.getElementById('progressBar').style.width = p + '%';
+                document.getElementById('progressText').textContent = p + '% 回答済み';
+            },
+            next() {
+                const sec = APP_DATA.sections[this.currentSection];
+                for (let i = sec.range[0]; i <= sec.range[1]; i++) { if (this.answers[i] === undefined) { alert('未回答の質問があります。'); return; } }
+                if (this.currentSection < 4) { this.currentSection++; this.renderSection(); } else { this.calc(); }
+            },
+            prev() { if (this.currentSection > 0) { this.currentSection--; this.renderSection(); } },
+            calc() {
+                const s = { A:0,F:0,N:0,D:0,S:0,O:0,I:0,R:0,St:0,AE_A:0,AE_E:0 };
+                APP_DATA.questions.forEach(q => {
+                    const v = this.answers[q.id] || 0;
+                    if (q.id <= 15) s[q.type] += v;
+                    else if (q.id <= 35) s[q.type] += v;
+                    else if (q.id <= 55) s[q.type] += v;
+                    else if (q.id <= 75) s[q.type] += v;
+                    else { if (q.type === 'A') s.AE_A += v; else s.AE_E += v; }
+                });
+                let code = "";
+                const afn = [{k:'A',v:s.A},{k:'F',v:s.F},{k:'N',v:s.N}].sort((a,b)=>b.v-a.v);
+                code += afn[0].k + "-";
+                code += s.D >= s.S ? "D" : "S";
+                code += s.O >= s.I ? "O" : "I";
+                code += s.R >= s.St ? "R" : "S";
+                const base = code;
+                const full = base + (s.AE_A/12 >= s.AE_E/13 ? "A" : "E");
+                this.showResult(full, base, s);
+            },
+            showResult(full, base, s) {
+                this.showView('result-view');
+                document.getElementById('res-full-code').textContent = full;
+                document.getElementById('res-name').textContent = APP_DATA.nameMap[base] || "未知";
+                document.getElementById('score-display').innerHTML = `
+                    <div class="score-item"><b>AFN:</b> A:${s.A.toFixed(1)}/F:${s.F.toFixed(1)}/N:${s.N.toFixed(1)}</div>
+                    <div class="score-item"><b>D/S:</b> D:${s.D.toFixed(1)}/S:${s.S.toFixed(1)}</div>
+                    <div class="score-item"><b>O/I:</b> O:${s.O.toFixed(1)}/I:${s.I.toFixed(1)}</div>
+                    <div class="score-item"><b>R/S:</b> R:${s.R.toFixed(1)}/S:${s.St.toFixed(1)}</div>
+                `;
+                document.getElementById('res-summary-1').textContent = "領域： " + (full[0]==='A'?"愛情型(深く向き合う)":full[0]==='F'?"友情型(広く繋がる)":"中立型(構造を見る)");
+                document.getElementById('res-summary-2').textContent = "方向： " + (full.endsWith('A')?"外向寄り(社会や他者へ)":"内向寄り(自己や深化へ)");
+                localStorage.removeItem('xtype_answers');
+            }
+        };
+        window.onload = () => app.init();
+    </script>
+</body>
+</html>
